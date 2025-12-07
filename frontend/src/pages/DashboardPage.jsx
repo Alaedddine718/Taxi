@@ -7,6 +7,7 @@ import TaxiTable from "../components/tables/TaxiTable";
 import TripsTable from "../components/tables/TripsTable";
 import Loader from "../components/common/Loader";
 
+
 function DashboardPage() {
   const { systemData, loading, error } = useSistema();
 
