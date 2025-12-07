@@ -1,25 +1,13 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext } from "react";
 import { useSistemaData } from "../hooks/useSistemaData";
 
 const SistemaContext = createContext(null);
 
 export function SistemaProvider({ children }) {
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const { data, loading, error, forceReload } = useSistemaData({
-    enabled: autoRefresh,
-  });
+  const sistemaState = useSistemaData(); // { systemData, loading, error, reload }
 
   return (
-    <SistemaContext.Provider
-      value={{
-        systemData: data,
-        loading,
-        error,
-        autoRefresh,
-        setAutoRefresh,
-        reload: forceReload,
-      }}
-    >
+    <SistemaContext.Provider value={sistemaState}>
       {children}
     </SistemaContext.Provider>
   );
@@ -28,7 +16,9 @@ export function SistemaProvider({ children }) {
 export function useSistema() {
   const ctx = useContext(SistemaContext);
   if (!ctx) {
-    throw new Error("useSistema debe usarse dentro de <SistemaProvider>");
+    // Si algún día se usa fuera del provider, que avise claro
+    throw new Error("useSistema debe usarse dentro de un <SistemaProvider>");
   }
   return ctx;
 }
+

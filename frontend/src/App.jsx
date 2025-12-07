@@ -12,12 +12,13 @@ function App() {
     <SistemaProvider>
       <DashboardLayout>
         <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/taxis" element={<TaxisPage />} />
           <Route path="/clientes" element={<ClientesPage />} />
           <Route path="/viajes" element={<ViajesPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          {/* ruta inicial */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           {/* cualquier ruta rara → dashboard */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -27,6 +28,8 @@ function App() {
 }
 
 export default App;
+
+
 
 
 
