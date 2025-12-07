@@ -1,46 +1,51 @@
 import { useEffect, useState, useCallback } from "react";
 import { getStatus } from "../api/uniataxiApi";
 
-const EMPTY_DATA = {
-  taxis: [],
-  clients: [],
-  trips: [],
-};
+// cada cuántos milisegundos queremos refrescar los datos
+const POLLING_INTERVAL_MS = 5000; // 5 segundos
 
-export function useSistemaData({ enabled = true, intervalMs = 1000 } = {}) {
-  const [data, setData] = useState(EMPTY_DATA);
-  const [loading, setLoading] = useState(false);
+export function useSistemaData() {
+  const [systemData, setSystemData] = useState({
+    taxis: [],
+    clients: [],
+    trips: [],
+  });
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const fetchData = useCallback(async () => {
+  // Hace UNA petición a /status
+  const fetchStatusOnce = useCallback(async () => {
     try {
-      setLoading(true);
+      const data = await getStatus();
+      setSystemData(data);
       setError("");
-      const res = await getStatus();
-      setData({
-        taxis: res.taxis || [],
-        clients: res.clients || [],
-        trips: res.trips || [],
-      });
+      setLoading(false);
     } catch (e) {
-      console.error(e);
-      setError(e.message || "Error al obtener estado");
-    } finally {
+      console.error("Error al obtener /status", e);
+      setError("No se pudo obtener el estado del sistema");
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    // petición inicial
+    fetchStatusOnce();
 
-    fetchData();
-    const id = setInterval(fetchData, intervalMs);
+    // polling cada X milisegundos
+    const id = setInterval(fetchStatusOnce, POLLING_INTERVAL_MS);
+
+    // limpiar intervalo cuando se desmonta
     return () => clearInterval(id);
-  }, [enabled, intervalMs, fetchData]);
+  }, [fetchStatusOnce]);
 
-  const forceReload = useCallback(() => {
-    fetchData();
-  }, [fetchData]);
-
-  return { data, loading, error, forceReload };
+  return {
+    systemData,
+    loading,
+    error,
+    // para usarlo manualmente después de /start o /request
+    reload: fetchStatusOnce,
+  };
 }
+
+
+
