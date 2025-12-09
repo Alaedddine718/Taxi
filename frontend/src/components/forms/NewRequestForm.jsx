@@ -1,126 +1,153 @@
+// frontend/src/components/forms/NewRequestForm.jsx
+import { useState } from "react";
 import Card from "../common/Card";
 import Button from "../common/Button";
-import { useForm } from "../../hooks/useForm";
 import { requestTaxi } from "../../api/uniataxiApi";
 import { useSistema } from "../../context/SistemaContext";
 
 function NewRequestForm() {
   const { reload } = useSistema();
-  const { values, handleChange, resetForm } = useForm({
-    name: "Cliente 1",
-    origin_x: 0,
-    origin_y: 0,
-    dest_x: 5,
-    dest_y: 5,
-  });
+
+  const [name, setName] = useState("Cliente 1");
+  const [originX, setOriginX] = useState(0);
+  const [originY, setOriginY] = useState(0);
+  const [destX, setDestX] = useState(5);
+  const [destY, setDestY] = useState(5);
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setEnviando(true);
+    setError(null);
     try {
-      await requestTaxi(values);
-      reload();
-      alert("Solicitud de taxi creada");
-      resetForm();
+      await requestTaxi({
+        name,
+        originX: Number(originX),
+        originY: Number(originY),
+        destX: Number(destX),
+        destY: Number(destY),
+      });
+      alert("Solicitud de taxi creada correctamente");
+      reload(); // vuelve a pedir /status
     } catch (err) {
-      console.error(err);
-      alert("Error al crear la solicitud");
+      console.error("Error al crear solicitud", err);
+      setError("No se pudo crear la solicitud");
+    } finally {
+      setEnviando(false);
     }
   }
 
   return (
-    <Card
-      title="Nueva solicitud de taxi"
-      subtitle="Simula que un cliente pide un taxi con origen y destino"
-    >
+    <Card title="Nueva solicitud de taxi">
+      <p style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+        Simula que un cliente pide un taxi con origen y destino.
+      </p>
       <form
         onSubmit={handleSubmit}
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: "0.5rem",
-        }}
+        style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
       >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            fontSize: "0.85rem",
-          }}
-        >
-          Nombre del cliente
+        <div>
+          <label style={{ fontSize: "0.8rem" }}>Nombre del cliente</label>
           <input
             type="text"
-            name="name"
-            value={values.name}
-            onChange={handleChange}
-            style={inputStyle}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "0.4rem 0.6rem",
+              borderRadius: "0.4rem",
+              border: "1px solid #333",
+              background: "#050b1a",
+              color: "white",
+            }}
           />
         </div>
-        <div />
 
-        <FormNumberInput
-          label="Origen X"
-          name="origin_x"
-          value={values.origin_x}
-          onChange={handleChange}
-        />
-        <FormNumberInput
-          label="Origen Y"
-          name="origin_y"
-          value={values.origin_y}
-          onChange={handleChange}
-        />
-        <FormNumberInput
-          label="Destino X"
-          name="dest_x"
-          value={values.dest_x}
-          onChange={handleChange}
-        />
-        <FormNumberInput
-          label="Destino Y"
-          name="dest_y"
-          value={values.dest_y}
-          onChange={handleChange}
-        />
-
-        <div style={{ gridColumn: "1 / -1", marginTop: "0.3rem" }}>
-          <Button type="submit">Crear solicitud</Button>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: "0.8rem" }}>Origen X</label>
+            <input
+              type="number"
+              value={originX}
+              onChange={(e) => setOriginX(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.4rem 0.6rem",
+                borderRadius: "0.4rem",
+                border: "1px solid #333",
+                background: "#050b1a",
+                color: "white",
+              }}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: "0.8rem" }}>Origen Y</label>
+            <input
+              type="number"
+              value={originY}
+              onChange={(e) => setOriginY(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.4rem 0.6rem",
+                borderRadius: "0.4rem",
+                border: "1px solid #333",
+                background: "#050b1a",
+                color: "white",
+              }}
+            />
+          </div>
         </div>
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: "0.8rem" }}>Destino X</label>
+            <input
+              type="number"
+              value={destX}
+              onChange={(e) => setDestX(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.4rem 0.6rem",
+                borderRadius: "0.4rem",
+                border: "1px solid #333",
+                background: "#050b1a",
+                color: "white",
+              }}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: "0.8rem" }}>Destino Y</label>
+            <input
+              type="number"
+              value={destY}
+              onChange={(e) => setDestY(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.4rem 0.6rem",
+                borderRadius: "0.4rem",
+                border: "1px solid #333",
+                background: "#050b1a",
+                color: "white",
+              }}
+            />
+          </div>
+        </div>
+
+        <Button type="submit" disabled={enviando}>
+          {enviando ? "Creando..." : "Crear solicitud"}
+        </Button>
+
+        {error && (
+          <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "#ff6b6b" }}>
+            {error}
+          </div>
+        )}
       </form>
     </Card>
   );
 }
 
-const inputStyle = {
-  marginTop: "0.2rem",
-  padding: "0.25rem 0.4rem",
-  borderRadius: "0.4rem",
-  border: "1px solid rgba(148,163,184,0.7)",
-  background: "rgba(15,23,42,0.9)",
-  color: "#e5e7eb",
-  fontSize: "0.85rem",
-};
-
-function FormNumberInput({ label, name, value, onChange }) {
-  return (
-    <label
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        fontSize: "0.85rem",
-      }}
-    >
-      {label}
-      <input
-        type="number"
-        name={name}
-        value={value}
-        onChange={onChange}
-        style={inputStyle}
-      />
-    </label>
-  );
-}
-
 export default NewRequestForm;
+
 
