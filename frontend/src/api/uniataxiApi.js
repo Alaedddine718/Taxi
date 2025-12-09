@@ -1,28 +1,57 @@
-import { httpClient } from "./httpClient";
+// frontend/src/api/uniataxiApi.js
+import API_BASE_URL from "../config/apiConfig";
 
-// Inicializar sistema (nº de taxis)
-export function startSystem({ numTaxis }) {
-  return httpClient.post("/start", { num_taxis: numTaxis });
+// Función genérica para hacer peticiones
+async function request(path, options = {}) {
+  const url = `${API_BASE_URL}${path}`;
+
+  const res = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+    ...options,
+  });
+
+  if (!res.ok) {
+    // Lanzamos un error para que el hook lo capture
+    const text = await res.text();
+    throw new Error(`Error HTTP ${res.status}: ${text}`);
+  }
+
+  return res.json();
 }
 
-// Crear una solicitud de taxi (crea cliente implícito)
-export function requestTaxi({ name, origin_x, origin_y, dest_x, dest_y }) {
-  return httpClient.post("/request", {
-    name,
-    origin_x,
-    origin_y,
-    dest_x,
-    dest_y,
+// Llamar a /start
+export function startSystem(numTaxis) {
+  return request("/start", {
+    method: "POST",
+    body: JSON.stringify({ num_taxis: numTaxis }),
   });
 }
 
-// Estado global del sistema (taxis, clientes, viajes)
-export function getStatus() {
-  return httpClient.get("/status");
+// Llamar a /request
+export function requestTaxi({ name, originX, originY, destX, destY }) {
+  return request("/request", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      origin_x: originX,
+      origin_y: originY,
+      dest_x: destX,
+      dest_y: destY,
+    }),
+  });
 }
 
-// Resumen económico (80/20)
+// Llamar a /status
+export function getStatus() {
+  return request("/status");
+}
+
+// Llamar a /financial
 export function getFinancial() {
-  return httpClient.get("/financial");
+  return request("/financial");
+}
+
 }
 
