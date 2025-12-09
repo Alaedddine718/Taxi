@@ -1,38 +1,30 @@
-import Card from "../common/Card";
-import DataTable from "../common/DataTable";
+// frontend/src/components/tables/ClientsTable.jsx
 
 function ClientsTable({ clients }) {
-  const columns = [
-    { key: "id", header: "ID" },
-    { key: "name", header: "Nombre" },
-    {
-      key: "origin",
-      header: "Origen",
-      render: (c) => `(${c.origin_x}, ${c.origin_y})`,
-    },
-    {
-      key: "dest",
-      header: "Destino",
-      render: (c) => `(${c.dest_x}, ${c.dest_y})`,
-    },
-    {
-      key: "rating_given",
-      header: "Rating dado",
-      render: (c) =>
-        c.rating_given != null ? c.rating_given.toFixed(2) : "-",
-    },
-  ];
+  if (!clients || clients.length === 0) {
+    return <div style={{ fontSize: "0.85rem" }}>No hay clientes registrados todavía.</div>;
+  }
 
   return (
-    <Card title="Clientes" subtitle="Clientes que han solicitado viajes">
-      <DataTable
-        columns={columns}
-        data={clients || []}
-        emptyMessage="Sin clientes"
-      />
-    </Card>
+    <table style={{ width: "100%", fontSize: "0.85rem", borderCollapse: "collapse" }}>
+      <thead>
+        <tr style={{ textAlign: "left", borderBottom: "1px solid #333" }}>
+          <th style={{ padding: "0.4rem" }}>ID</th>
+          <th style={{ padding: "0.4rem" }}>Nombre</th>
+        </tr>
+      </thead>
+      <tbody>
+        {clients.map((c) => (
+          <tr key={c.id} style={{ borderBottom: "1px solid #222" }}>
+            <td style={{ padding: "0.4rem" }}>{c.id}</td>
+            <td style={{ padding: "0.4rem" }}>{c.name}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 export default ClientsTable;
+
 

@@ -1,41 +1,35 @@
-import Card from "../common/Card";
-import DataTable from "../common/DataTable";
+// frontend/src/components/tables/TaxiTable.jsx
 
 function TaxiTable({ taxis }) {
-  const columns = [
-    { key: "id", header: "ID" },
-    {
-      key: "pos",
-      header: "Posición",
-      render: (t) => `(${t.x}, ${t.y})`,
-    },
-    {
-      key: "busy",
-      header: "Estado",
-      render: (t) => (t.busy ? "Ocupado" : "Libre"),
-    },
-    {
-      key: "current_trip_id",
-      header: "Viaje actual",
-      render: (t) => t.current_trip_id ?? "-",
-    },
-    {
-      key: "rating",
-      header: "Rating",
-      render: (t) => t.rating.toFixed(2),
-    },
-    {
-      key: "total_earnings",
-      header: "Ganancias totales",
-      render: (t) => `${t.total_earnings.toFixed(2)} €`,
-    },
-  ];
+  if (!taxis || taxis.length === 0) {
+    return <div style={{ fontSize: "0.85rem" }}>No hay taxis registrados todavía.</div>;
+  }
 
   return (
-    <Card title="Taxis" subtitle="Listado de taxis en el sistema">
-      <DataTable columns={columns} data={taxis || []} emptyMessage="Sin taxis" />
-    </Card>
+    <table style={{ width: "100%", fontSize: "0.85rem", borderCollapse: "collapse" }}>
+      <thead>
+        <tr style={{ textAlign: "left", borderBottom: "1px solid #333" }}>
+          <th style={{ padding: "0.4rem" }}>ID</th>
+          <th style={{ padding: "0.4rem" }}>Posición (x, y)</th>
+          <th style={{ padding: "0.4rem" }}>Estado</th>
+          <th style={{ padding: "0.4rem" }}>Ingresos (€)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {taxis.map((t) => (
+          <tr key={t.id} style={{ borderBottom: "1px solid #222" }}>
+            <td style={{ padding: "0.4rem" }}>{t.id}</td>
+            <td style={{ padding: "0.4rem" }}>
+              ({t.x}, {t.y})
+            </td>
+            <td style={{ padding: "0.4rem" }}>{t.status}</td>
+            <td style={{ padding: "0.4rem" }}>{t.total_earnings.toFixed(2)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 export default TaxiTable;
+

@@ -1,88 +1,90 @@
+// frontend/src/pages/DashboardPage.jsx
 import { useSistema } from "../context/SistemaContext";
 import KPICards from "../components/dashboard/KPICards";
 import StatusSummary from "../components/dashboard/StatusSummary";
 import StartSimulationForm from "../components/forms/StartSimulationForm";
 import NewRequestForm from "../components/forms/NewRequestForm";
 import TaxiTable from "../components/tables/TaxiTable";
-import TripsTable from "../components/tables/TripsTable";
 import Loader from "../components/common/Loader";
+import Card from "../components/common/Card";
 
 function DashboardPage() {
-  // Cogemos TODO el estado del contexto
-  const sistema = useSistema();
+  const { systemData, loading, error, reload } = useSistema();
 
-  // Si por algún motivo aún es undefined, ponemos valores por defecto
-  const systemData = sistema?.systemData ?? {
-    taxis: [],
-    clients: [],
-    trips: [],
+  // Valores seguros aunque aún no haya datos
+  const metrics = systemData?.metrics || {
+    total_taxis: 0,
+    total_clients: 0,
+    total_trips: 0,
+    free_taxis: 0,
+    busy_taxis: 0,
+    ongoing_trips: 0,
   };
-  const loading = sistema?.loading ?? false;
-  const error = sistema?.error ?? "";
 
-  const taxis = systemData?.taxis ?? [];
-  const clients = systemData?.clients ?? [];
-  const trips = systemData?.trips ?? [];
+  const taxis = systemData?.taxis || [];
+  const trips = systemData?.trips || [];
+  const clients = systemData?.clients || [];
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.75rem",
-      }}
-    >
-      {error && (
-        <div style={{ fontSize: "0.8rem", color: "#f97316" }}>
-          Backend no disponible o error al obtener datos.
-        </div>
-      )}
-
-      {loading && (
-        <div style={{ marginBottom: "0.5rem" }}>
-          <Loader />
-        </div>
-      )}
-
-      {/* KPIs */}
-      <KPICards systemData={systemData} />
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
-          gap: "0.75rem",
-        }}
-      >
-        {/* Columna izquierda: formularios */}
-        <div
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      {/* Cabecera */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h2 style={{ margin: 0, fontSize: "1.3rem" }}>Dashboard</h2>
+        <button
+          onClick={reload}
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.75rem",
+            padding: "0.4rem 0.8rem",
+            borderRadius: "0.4rem",
+            border: "none",
+            background: "#198754",
+            color: "white",
+            cursor: "pointer",
+            fontSize: "0.85rem",
           }}
         >
-          <StartSimulationForm />
-          <StatusSummary systemData={systemData} />
-        </div>
-
-        {/* Columna derecha: nueva solicitud */}
-        <div>
-          <NewRequestForm />
-        </div>
+          Actualizar estado
+        </button>
       </div>
 
-      {/* Tablas de taxis y viajes */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.2fr)",
-          gap: "0.75rem",
-        }}
-      >
+      {/* Mensajes de carga o error */}
+      {loading && (
+        <div style={{ fontSize: "0.85rem" }}>
+          <Loader /> Cargando datos del sistema...
+        </div>
+      )}
+      {error && (
+        <div style={{ fontSize: "0.85rem", color: "#ff6b6b" }}>
+          Error al obtener datos: {error}
+        </div>
+      )}
+
+      {/* KPIs principales */}
+      <KPICards
+        totalTaxis={metrics.total_taxis}
+        totalClients={metrics.total_clients}
+        totalTrips={metrics.total_trips}
+        finishedTrips={trips.length}
+      />
+
+      {/* Formularios de iniciar sistema y crear solicitud */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: "1rem" }}>
+        <StartSimulationForm />
+        <NewRequestForm />
+      </div>
+
+      {/* Estado general */}
+      <Card title="Estado general del sistema">
+        <StatusSummary
+          freeTaxis={metrics.free_taxis}
+          busyTaxis={metrics.busy_taxis}
+          ongoingTrips={metrics.ongoing_trips}
+        />
+      </Card>
+
+      {/* Tabla de taxis */}
+      <Card title="Taxis en el sistema">
         <TaxiTable taxis={taxis} />
-        <TripsTable trips={trips} />
-      </div>
+      </Card>
     </div>
   );
 }
