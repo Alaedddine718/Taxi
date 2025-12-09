@@ -1,13 +1,14 @@
+// frontend/src/context/SistemaContext.jsx
 import { createContext, useContext } from "react";
-import { useSistemaData } from "../hooks/useSistemaData";
+import useSistemaData from "../hooks/useSistemaData";
 
 const SistemaContext = createContext(null);
 
 export function SistemaProvider({ children }) {
-  const sistemaState = useSistemaData(); // { systemData, loading, error, reload }
+  const sistema = useSistemaData();
 
   return (
-    <SistemaContext.Provider value={sistemaState}>
+    <SistemaContext.Provider value={sistema}>
       {children}
     </SistemaContext.Provider>
   );
@@ -16,9 +17,7 @@ export function SistemaProvider({ children }) {
 export function useSistema() {
   const ctx = useContext(SistemaContext);
   if (!ctx) {
-    // Si algún día se usa fuera del provider, que avise claro
-    throw new Error("useSistema debe usarse dentro de un <SistemaProvider>");
+    throw new Error("useSistema debe usarse dentro de <SistemaProvider>");
   }
   return ctx;
 }
-

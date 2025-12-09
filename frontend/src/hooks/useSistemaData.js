@@ -1,51 +1,40 @@
-import { useEffect, useState, useCallback } from "react";
+// frontend/src/hooks/useSistemaData.js
+import { useEffect, useState } from "react";
 import { getStatus } from "../api/uniataxiApi";
 
-// cada cuántos milisegundos queremos refrescar los datos
-const POLLING_INTERVAL_MS = 5000; // 5 segundos
+function useSistemaData() {
+  const [systemData, setSystemData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-export function useSistemaData() {
-  const [systemData, setSystemData] = useState({
-    taxis: [],
-    clients: [],
-    trips: [],
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  // Hace UNA petición a /status
-  const fetchStatusOnce = useCallback(async () => {
+  async function loadOnce() {
+    setLoading(true);
     try {
       const data = await getStatus();
       setSystemData(data);
-      setError("");
-      setLoading(false);
+      setError(null);
     } catch (e) {
       console.error("Error al obtener /status", e);
-      setError("No se pudo obtener el estado del sistema");
+      setError(e.message || "Error al obtener datos del backend");
+    } finally {
       setLoading(false);
     }
-  }, []);
+  }
 
   useEffect(() => {
-    // petición inicial
-    fetchStatusOnce();
+    // Cargar al entrar
+    loadOnce();
 
-    // polling cada X milisegundos
-    const id = setInterval(fetchStatusOnce, POLLING_INTERVAL_MS);
-
-    // limpiar intervalo cuando se desmonta
+    // Volver a cargar cada 3 segundos (simulación viva)
+    const id = setInterval(loadOnce, 3000);
     return () => clearInterval(id);
-  }, [fetchStatusOnce]);
+  }, []);
 
-  return {
-    systemData,
-    loading,
-    error,
-    // para usarlo manualmente después de /start o /request
-    reload: fetchStatusOnce,
-  };
+  return { systemData, loading, error, reload: loadOnce };
 }
+
+export default useSistemaData;
+
 
 
 
