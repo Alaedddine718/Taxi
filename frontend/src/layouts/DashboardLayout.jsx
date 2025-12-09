@@ -1,121 +1,101 @@
-import Clock from "../components/common/Clock";
-import { Link, useLocation } from "react-router-dom";
+// frontend/src/layouts/DashboardLayout.jsx
+import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+function Clock() {
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <span style={{ fontSize: "0.8rem", opacity: 0.8 }}>
+      {now.toLocaleDateString()} {now.toLocaleTimeString()}
+    </span>
+  );
+}
 
 function DashboardLayout({ children }) {
-  const location = useLocation();
-
   return (
     <div
       style={{
+        display: "flex",
         minHeight: "100vh",
-        display: "grid",
-        gridTemplateRows: "auto 1fr",
-        background: "#0f172a",
-        color: "#e5e7eb",
+        background: "radial-gradient(circle at top, #182848 0, #050816 60%, #02010a 100%)",
+        color: "white",
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       }}
     >
-      {/* Header */}
-      <header
+      {/* Sidebar */}
+      <aside
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0.75rem 1.5rem",
-          borderBottom: "1px solid rgba(148, 163, 184, 0.4)",
-          background:
-            "linear-gradient(90deg, rgba(15,23,42,0.95), rgba(30,64,175,0.7))",
+          width: "220px",
+          padding: "1rem",
+          borderRight: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <div
-            style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "8px",
-              background: "rgba(15,118,110,0.9)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: "bold",
-              fontSize: "0.9rem",
-            }}
-          >
-            U
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: "1rem" }}>UNIETAXI</div>
-            <div style={{ fontSize: "0.75rem", opacity: 0.8 }}>
-              Sistema de atención & simulación SO
-            </div>
-          </div>
+        <div style={{ marginBottom: "1.5rem" }}>
+          <div style={{ fontWeight: "bold", fontSize: "1.1rem" }}>UNIETAXI</div>
+          <div style={{ fontSize: "0.8rem", opacity: 0.8 }}>Sistema de taxis</div>
         </div>
 
-        <Clock mode="simulado" speedFactor={60} />
-      </header>
+        <nav style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+          <NavItem to="/dashboard" label="Dashboard" />
+          <NavItem to="/taxis" label="Taxis" />
+          <NavItem to="/clientes" label="Clientes" />
+          <NavItem to="/viajes" label="Viajes" />
+          <NavItem to="/admin" label="Admin / Finanzas" />
+        </nav>
+      </aside>
 
-      {/* Sidebar + contenido */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "220px 1fr",
-        }}
-      >
-        <aside
+      {/* Contenido principal */}
+      <main style={{ flex: 1, padding: "1rem 1.5rem", display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <header
           style={{
-            borderRight: "1px solid rgba(148, 163, 184, 0.3)",
-            padding: "1rem 0.75rem",
-            background: "rgba(15,23,42,0.95)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "1rem",
           }}
         >
-          <nav style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <NavLink to="/" active={location.pathname === "/"}>
-              Dashboard
-            </NavLink>
-            <NavLink to="/taxis" active={location.pathname === "/taxis"}>
-              Taxis
-            </NavLink>
-            <NavLink to="/clientes" active={location.pathname === "/clientes"}>
-              Clientes
-            </NavLink>
-            <NavLink to="/viajes" active={location.pathname === "/viajes"}>
-              Viajes
-            </NavLink>
-            <NavLink to="/admin" active={location.pathname === "/admin"}>
-              Admin
-            </NavLink>
-          </nav>
-        </aside>
+          <div>
+            <div style={{ fontWeight: 500 }}>Panel de control</div>
+            <div style={{ fontSize: "0.8rem", opacity: 0.75 }}>
+              Simulación de sincronización y comunicación entre hilos (UNIETAXI)
+            </div>
+          </div>
+          <Clock />
+        </header>
 
-        <main
-          style={{
-            padding: "1.25rem 1.5rem",
-            background: "radial-gradient(circle at top, #1f2937 0, #020617 60%)",
-          }}
-        >
-          {children}
-        </main>
-      </div>
+        {/* Contenido renderizado por las rutas */}
+        <section style={{ flex: 1 }}>{children}</section>
+      </main>
     </div>
   );
 }
 
-function NavLink({ to, children, active }) {
+function NavItem({ to, label }) {
   return (
-    <Link
+    <NavLink
       to={to}
-      style={{
-        textDecoration: "none",
-        color: active ? "#22c55e" : "#e5e7eb",
-        fontSize: "0.9rem",
-        padding: "0.4rem 0.65rem",
-        borderRadius: "999px",
+      style={({ isActive }) => ({
         display: "block",
-        background: active ? "rgba(34,197,94,0.12)" : "transparent",
-      }}
+        padding: "0.45rem 0.6rem",
+        borderRadius: "0.5rem",
+        textDecoration: "none",
+        fontSize: "0.9rem",
+        color: isActive ? "#0dcaf0" : "rgba(255,255,255,0.8)",
+        background: isActive ? "rgba(13, 202, 240, 0.15)" : "transparent",
+      })}
     >
-      {children}
-    </Link>
+      {label}
+    </NavLink>
   );
 }
 
 export default DashboardLayout;
+
