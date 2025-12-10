@@ -1,171 +1,318 @@
 // frontend/src/pages/AdminPage.jsx
-import { useEffect, useState } from "react";
-import { getFinancial } from "../api/uniataxiApi";
 import { useSistema } from "../context/SistemaContext";
-import Card from "../components/common/Card";
 import Loader from "../components/common/Loader";
 
+// Función auxiliar para asegurarnos de que siempre tenemos un número
+function num(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isNaN(n) ? fallback : n;
+}
+
 function AdminPage() {
-  // Datos generales del sistema (taxis, clientes, viajes)
-  const { systemData, loading: loadingStatus, error: statusError, reload } = useSistema();
+  // AHORA sí usamos el contexto directamente
+  const { systemData, financialData, loading, error, refreshFinancial } =
+    useSistema();
 
-  // Datos financieros
-  const [financial, setFinancial] = useState(null);
-  const [loadingFinancial, setLoadingFinancial] = useState(false);
-  const [financialError, setFinancialError] = useState(null);
+  const trips = systemData?.trips || systemData?.viajes || [];
+  const totalTrips = trips.length;
 
-  async function loadFinancial() {
-    setLoadingFinancial(true);
-    setFinancialError(null);
-    try {
-      const data = await getFinancial();
-      setFinancial(data);
-    } catch (e) {
-      console.error("Error al obtener /financial", e);
-      setFinancialError("Error al obtener datos financieros");
-    } finally {
-      setLoadingFinancial(false);
-    }
-  }
+  const totalFareNumber = num(
+    financialData?.total_fares ??
+      financialData?.total_fare ??
+      financialData?.totalFare,
+    0
+  );
 
-  useEffect(() => {
-    loadFinancial();
-  }, []);
+  const companyIncomeNumber = num(
+    financialData?.company_income ??
+      financialData?.empresa ??
+      totalFareNumber * 0.2,
+    0
+  );
 
-  const trips = systemData?.trips || [];
+  const driversIncomeNumber = num(
+    financialData?.taxis_income ??
+      financialData?.drivers_income ??
+      (totalFareNumber - companyIncomeNumber),
+    0
+  );
 
-  // Elegimos hasta 5 viajes para el "seguimiento"
+  const totalFare = totalFareNumber.toFixed(2);
+  const companyIncome = companyIncomeNumber.toFixed(2);
+  const driversIncome = driversIncomeNumber.toFixed(2);
+
   const trackedTrips = trips.slice(0, 5);
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0, fontSize: "1.3rem" }}>Admin / Cierre contable</h2>
+  if (loading && !systemData && !financialData) {
+    return (
+      <div style={{ padding: "2rem" }}>
+        <Loader />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <main style={{ padding: "2rem", color: "#fecaca" }}>
+        <h1 style={{ fontSize: "1.3rem", marginBottom: "0.75rem" }}>
+          Admin / Cierre contable
+        </h1>
+        <p>Backend no disponible o error al obtener datos financieros.</p>
         <button
-          onClick={() => {
-            reload();
-            loadFinancial();
-          }}
+          onClick={refreshFinancial}
           style={{
-            padding: "0.4rem 0.8rem",
-            borderRadius: "0.4rem",
+            marginTop: "1rem",
+            padding: "0.5rem 1rem",
+            borderRadius: "999px",
             border: "none",
-            background: "#198754",
-            color: "white",
+            backgroundColor: "#22c55e",
+            color: "#0b1120",
+            fontWeight: 600,
             cursor: "pointer",
-            fontSize: "0.85rem",
+          }}
+        >
+          Reintentar
+        </button>
+      </main>
+    );
+  }
+
+  return (
+    <main style={{ padding: "1.75rem 2rem" }}>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "1.5rem",
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: "1.5rem", margin: 0 }}>Admin / Cierre contable</h1>
+          <p
+            style={{
+              fontSize: "0.9rem",
+              color: "#9ca3af",
+              marginTop: "0.25rem",
+            }}
+          >
+            Resumen simple de ingresos del sistema UNIETAXI.
+          </p>
+        </div>
+        <button
+          onClick={refreshFinancial}
+          style={{
+            padding: "0.45rem 1.25rem",
+            borderRadius: "999px",
+            border: "none",
+            backgroundColor: "#22c55e",
+            color: "#0b1120",
+            fontWeight: 600,
+            cursor: "pointer",
           }}
         >
           Actualizar datos
         </button>
-      </div>
+      </header>
 
-      {(loadingStatus || loadingFinancial) && (
-        <div style={{ fontSize: "0.85rem" }}>
-          <Loader /> Cargando datos del sistema...
-        </div>
-      )}
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gap: "1rem",
+          marginBottom: "1.5rem",
+        }}
+      >
+        <InfoBox
+          title="Viajes totales"
+          value={totalTrips}
+          subtitle="Número total de servicios registrados"
+        />
+        <InfoBox
+          title="Suma de tarifas (clientes)"
+          value={`${totalFare} €`}
+          subtitle="Dinero facturado a los clientes"
+        />
+        <InfoBox
+          title="Ingresos empresa (20%)"
+          value={`${companyIncome} €`}
+          subtitle="Comisión UNIETAXI"
+        />
+        <InfoBox
+          title="Ingresos taxis (80%)"
+          value={`${driversIncome} €`}
+          subtitle="Total repartido entre taxistas"
+        />
+      </section>
 
-      {(statusError || financialError) && (
-        <div style={{ fontSize: "0.85rem", color: "#ff6b6b" }}>
-          {statusError && <div>Error estado sistema: {statusError}</div>}
-          {financialError && <div>Error financiero: {financialError}</div>}
-        </div>
-      )}
+      <section
+        style={{
+          marginBottom: "1.5rem",
+          padding: "1rem 1.25rem",
+          borderRadius: "0.75rem",
+          background:
+            "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(15,23,42,0.6))",
+        }}
+      >
+        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
+          Ingresos por taxi
+        </h2>
+        <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
+          Versión simplificada: mostramos sólo los totales globales. Se podría
+          extender a una tabla por taxi si el profesor lo pide.
+        </p>
+      </section>
 
-      {/* Resumen financiero general */}
-      <Card title="Ingresos del sistema">
-        {financial ? (
-          <div
+      <section
+        style={{
+          padding: "1rem 1.25rem",
+          borderRadius: "0.75rem",
+          background:
+            "linear-gradient(135deg, rgba(15,23,42,0.9), rgba(15,23,42,0.6))",
+        }}
+      >
+        <h2 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
+          Seguimiento de 5 servicios (ejemplo)
+        </h2>
+        {trackedTrips.length === 0 ? (
+          <p style={{ fontSize: "0.9rem", color: "#9ca3af" }}>
+            Aún no hay viajes registrados. Crea solicitudes de taxi desde el Dashboard.
+          </p>
+        ) : (
+          <table
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              gap: "1rem",
+              width: "100%",
+              borderCollapse: "collapse",
               fontSize: "0.9rem",
+              color: "#e5e7eb",
             }}
           >
-            <div>
-              <div style={{ opacity: 0.7 }}>Viajes totales</div>
-              <div style={{ fontSize: "1.2rem" }}>{financial.total_trips}</div>
-            </div>
-            <div>
-              <div style={{ opacity: 0.7 }}>Suma de tarifas (clientes)</div>
-              <div style={{ fontSize: "1.2rem" }}>{financial.total_fares.toFixed(2)} €</div>
-            </div>
-            <div>
-              <div style={{ opacity: 0.7 }}>Ingresos empresa (20%)</div>
-              <div style={{ fontSize: "1.2rem" }}>{financial.company_total.toFixed(2)} €</div>
-            </div>
-            <div>
-              <div style={{ opacity: 0.7 }}>Ingresos taxis (80%)</div>
-              <div style={{ fontSize: "1.2rem" }}>{financial.taxis_total.toFixed(2)} €</div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ fontSize: "0.85rem" }}>Sin datos todavía. Crea algún viaje.</div>
-        )}
-      </Card>
-
-      {/* Ingresos por taxi */}
-      <Card title="Ingresos por taxi">
-        {financial && financial.per_taxi && financial.per_taxi.length > 0 ? (
-          <table style={{ width: "100%", fontSize: "0.85rem", borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #333" }}>
-                <th style={{ padding: "0.4rem" }}>ID Taxi</th>
-                <th style={{ padding: "0.4rem" }}>Ingresos taxi (€)</th>
-                <th style={{ padding: "0.4rem" }}>Parte empresa asociada (€)</th>
+              <tr
+                style={{
+                  backgroundColor: "rgba(15,23,42,0.9)",
+                }}
+              >
+                <th style={thStyle}>ID viaje</th>
+                <th style={thStyle}>Cliente</th>
+                <th style={thStyle}>Taxi</th>
+                <th style={thStyle}>Origen</th>
+                <th style={thStyle}>Destino</th>
+                <th style={thStyle}>Tarifa (€)</th>
               </tr>
             </thead>
             <tbody>
-              {financial.per_taxi.map((t) => (
-                <tr key={t.taxi_id} style={{ borderBottom: "1px solid #222" }}>
-                  <td style={{ padding: "0.4rem" }}>{t.taxi_id}</td>
-                  <td style={{ padding: "0.4rem" }}>{t.taxi_earnings.toFixed(2)}</td>
-                  <td style={{ padding: "0.4rem" }}>{t.company_part.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div style={{ fontSize: "0.85rem" }}>Aún no hay taxis con viajes.</div>
-        )}
-      </Card>
+              {trackedTrips.map((trip, index) => {
+                const id =
+                  trip.id ??
+                  trip.trip_id ??
+                  trip.codigo ??
+                  `Viaje ${index + 1}`;
 
-      {/* Seguimiento de 5 servicios (requisito de la enunciado) */}
-      <Card title="Seguimiento de 5 servicios (ejemplo)">
-        {trackedTrips.length > 0 ? (
-          <table style={{ width: "100%", fontSize: "0.85rem", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #333" }}>
-                <th style={{ padding: "0.4rem" }}>ID Viaje</th>
-                <th style={{ padding: "0.4rem" }}>ID Cliente</th>
-                <th style={{ padding: "0.4rem" }}>ID Taxi</th>
-                <th style={{ padding: "0.4rem" }}>Distancia</th>
-                <th style={{ padding: "0.4rem" }}>Tarifa (€)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trackedTrips.map((trip) => (
-                <tr key={trip.id} style={{ borderBottom: "1px solid #222" }}>
-                  <td style={{ padding: "0.4rem" }}>{trip.id}</td>
-                  <td style={{ padding: "0.4rem" }}>{trip.client_id}</td>
-                  <td style={{ padding: "0.4rem" }}>{trip.taxi_id}</td>
-                  <td style={{ padding: "0.4rem" }}>{trip.distance.toFixed(2)}</td>
-                  <td style={{ padding: "0.4rem" }}>{trip.fare.toFixed(2)}</td>
-                </tr>
-              ))}
+                const cliente = trip.client_name ?? trip.cliente ?? "Cliente";
+                const taxi =
+                  trip.taxi_id ??
+                  trip.taxi ??
+                  (trip.taxiCode ? `Taxi ${trip.taxiCode}` : "Taxi");
+
+                const origen = `(${trip.origin_x ?? trip.origen_x ?? "?"}, ${
+                  trip.origin_y ?? trip.origen_y ?? "?"
+                })`;
+
+                const destino = `(${trip.dest_x ?? trip.destino_x ?? "?"}, ${
+                  trip.dest_y ?? trip.destino_y ?? "?"
+                })`;
+
+                const fareNumber = num(
+                  trip.fare ?? trip.tarifa ?? trip.price,
+                  0
+                );
+                const fare = fareNumber.toFixed(2);
+
+                return (
+                  <tr
+                    key={id}
+                    style={{
+                      backgroundColor:
+                        index % 2 === 0
+                          ? "rgba(15,23,42,0.8)"
+                          : "rgba(15,23,42,0.6)",
+                    }}
+                  >
+                    <td style={tdStyle}>{id}</td>
+                    <td style={tdStyle}>{cliente}</td>
+                    <td style={tdStyle}>{taxi}</td>
+                    <td style={tdStyle}>{origen}</td>
+                    <td style={tdStyle}>{destino}</td>
+                    <td style={tdStyle}>{fare}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        ) : (
-          <div style={{ fontSize: "0.85rem" }}>
-            Aún no hay viajes registrados. Crea una solicitud de taxi desde el Dashboard.
-          </div>
         )}
-      </Card>
+      </section>
+    </main>
+  );
+}
+
+function InfoBox({ title, value, subtitle }) {
+  return (
+    <div
+      style={{
+        padding: "1rem 1.25rem",
+        borderRadius: "0.75rem",
+        background:
+          "linear-gradient(135deg, rgba(15,23,42,0.95), rgba(15,23,42,0.7))",
+      }}
+    >
+      <p
+        style={{
+          fontSize: "0.85rem",
+          color: "#9ca3af",
+          marginBottom: "0.35rem",
+        }}
+      >
+        {title}
+      </p>
+      <p
+        style={{
+          fontSize: "1.35rem",
+          fontWeight: 600,
+          margin: 0,
+        }}
+      >
+        {value}
+      </p>
+      {subtitle && (
+        <p
+          style={{
+            fontSize: "0.8rem",
+            color: "#6b7280",
+            marginTop: "0.3rem",
+          }}
+        >
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }
 
+const thStyle = {
+  textAlign: "left",
+  padding: "0.5rem 0.75rem",
+  borderBottom: "1px solid rgba(55,65,81,0.7)",
+  fontWeight: 600,
+  fontSize: "0.85rem",
+};
+
+const tdStyle = {
+  padding: "0.45rem 0.75rem",
+  borderBottom: "1px solid rgba(31,41,55,0.7)",
+};
+
 export default AdminPage;
+
+
 

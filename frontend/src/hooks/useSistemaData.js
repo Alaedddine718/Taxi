@@ -1,13 +1,15 @@
 // frontend/src/hooks/useSistemaData.js
 import { useEffect, useState } from "react";
-import { getStatus } from "../api/uniataxiApi";
+import { getStatus, getFinancial } from "../api/uniataxiApi";
 
 function useSistemaData() {
   const [systemData, setSystemData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [financialData, setFinancialData] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  async function loadOnce() {
+  // Vuelve a pedir /status al backend
+  async function refreshStatus() {
     setLoading(true);
     try {
       const data = await getStatus();
@@ -21,14 +23,34 @@ function useSistemaData() {
     }
   }
 
+  // Pide los datos financieros (/financial)
+  async function refreshFinancial() {
+    try {
+      const data = await getFinancial();
+      setFinancialData(data);
+    } catch (e) {
+      console.error("Error al obtener /financial", e);
+      // no tocamos error global para no romper otras pantallas
+    }
+  }
+
+  // Al montar la app, cargamos el estado inicial
   useEffect(() => {
-    loadOnce();
+    refreshStatus();
   }, []);
 
-  return { systemData, loading, error, reload: loadOnce };
+  return {
+    systemData,
+    financialData,
+    loading,
+    error,
+    refreshStatus,
+    refreshFinancial,
+  };
 }
 
 export default useSistemaData;
+
 
 
 

@@ -1,3 +1,4 @@
+// frontend/src/pages/DashboardPage.jsx
 import React from "react";
 import { useSistema } from "../context/SistemaContext";
 import KPICards from "../components/dashboard/KPICards";
@@ -23,10 +24,12 @@ function DashboardPage() {
         </div>
       )}
 
-      <KPICards taxis={taxis} clients={clients} trips={trips} />
-      <StatusSummary taxis={taxis} clients={clients} trips={trips} />
+      {/* Tarjetas de resumen */}
+      <KPICards />
 
-      {/* Formularios */}
+      <StatusSummary />
+
+      {/* Formularios: aquí es donde refrescamos el estado al terminar */}
       <div
         style={{
           display: "grid",
@@ -38,7 +41,7 @@ function DashboardPage() {
         <NewRequestForm onSuccess={refreshStatus} />
       </div>
 
-      {/* Tablas */}
+      {/* Tablas principales */}
       <div
         style={{
           display: "grid",
@@ -46,7 +49,7 @@ function DashboardPage() {
           gap: "1.5rem",
         }}
       >
-        <TaxiTable taxis={taxis} />
+        <TaxiTable />
         <TripsTable trips={trips} />
       </div>
 
@@ -56,5 +59,6 @@ function DashboardPage() {
 }
 
 export default DashboardPage;
+
 
 
