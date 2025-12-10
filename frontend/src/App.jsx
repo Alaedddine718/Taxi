@@ -14,6 +14,7 @@ function App() {
       <SistemaProvider>
         <DashboardLayout>
           <Routes>
+            {/* al entrar en / te envío al dashboard */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/taxis" element={<TaxisPage />} />
@@ -28,6 +29,7 @@ function App() {
 }
 
 export default App;
+
 
 
 
