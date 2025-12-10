@@ -6,7 +6,6 @@ const SistemaContext = createContext(null);
 
 export function SistemaProvider({ children }) {
   const sistema = useSistemaData();
-
   return (
     <SistemaContext.Provider value={sistema}>
       {children}
@@ -21,4 +20,5 @@ export function useSistema() {
   }
   return ctx;
 }
+
 

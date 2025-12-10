@@ -1,50 +1,57 @@
 // frontend/src/pages/ViajesPage.jsx
 import { useSistema } from "../context/SistemaContext";
-import TripsTable from "../components/tables/TripsTable";
-import Loader from "../components/common/Loader";
-import Card from "../components/common/Card";
 
-function ViajesPage() {
-  const { systemData, loading, error, reload } = useSistema();
-  const trips = systemData?.trips || [];
+export default function ViajesPage() {
+  const { systemData, loading, error } = useSistema();
+
+  if (loading) return <p style={{ padding: "1rem" }}>Cargando viajes…</p>;
+  if (error) return <p style={{ padding: "1rem", color: "#f97373" }}>Error: {error}</p>;
+
+  const viajes = systemData?.viajes ?? [];
+
+  if (!viajes.length) {
+    return <p style={{ padding: "1rem" }}>Todavía no se ha registrado ningún viaje.</p>;
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0, fontSize: "1.3rem" }}>Viajes</h2>
-        <button
-          onClick={reload}
-          style={{
-            padding: "0.4rem 0.8rem",
-            borderRadius: "0.4rem",
-            border: "none",
-            background: "#198754",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "0.85rem",
-          }}
-        >
-          Actualizar
-        </button>
-      </div>
-
-      {loading && (
-        <div style={{ fontSize: "0.85rem" }}>
-          <Loader /> Cargando viajes...
-        </div>
-      )}
-      {error && (
-        <div style={{ fontSize: "0.85rem", color: "#ff6b6b" }}>
-          Error: {error}
-        </div>
-      )}
-
-      <Card title="Histórico de viajes">
-        <TripsTable trips={trips} />
-      </Card>
+    <div style={{ padding: "0.5rem" }}>
+      <h2 style={{ marginBottom: "0.5rem" }}>Histórico de viajes</h2>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "0.9rem",
+        }}
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Cliente</th>
+            <th>Taxi</th>
+            <th>Origen</th>
+            <th>Destino</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {viajes.map((v) => (
+            <tr key={v.id}>
+              <td>{v.id}</td>
+              <td>{v.cliente_id}</td>
+              <td>{v.taxi_id}</td>
+              <td>
+                ({v.origen_x}, {v.origen_y})
+              </td>
+              <td>
+                ({v.destino_x}, {v.destino_y})
+              </td>
+              <td>{v.estado}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-export default ViajesPage;
 

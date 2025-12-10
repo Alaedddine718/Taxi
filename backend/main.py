@@ -1,363 +1,247 @@
-"""
-Backend del sistema UNIETAXI
-----------------------------
-
-Objetivo del ejercicio:
-- Practicar sincronización y comunicación entre procesos/hilos.
-- Control de recursos críticos (listas compartidas de taxis, clientes, viajes).
-- Uso de semáforos y locks.
-
-Este archivo implementa:
-- FastAPI como servidor web.
-- Un hilo que simula el "Sistema de atención".
-- Endpoints:
-    POST /start      -> iniciar el sistema con N taxis
-    POST /request    -> un cliente pide un taxi
-    GET  /status     -> estado general del sistema (taxis, clientes, viajes, métricas)
-    GET  /financial  -> resumen de ingresos y cierre contable básico
-"""
-
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List, Dict
+import math
 import threading
 import time
-import math
-import random
-from typing import List, Dict, Any
+import uuid
 
-# -----------------------------
-# Configuración general
-# -----------------------------
-
-# Porcentaje que se queda la empresa
-COMPANY_PERCENT = 0.20   # 20 %
-TAXI_PERCENT = 0.80      # 80 %
-
-# Velocidad de la simulación (para los sleeps del hilo)
-SLEEP_FACTOR = 0.05      # cuanto más pequeño, más rápido van los viajes
-
-
-# -----------------------------
-# Estado compartido del sistema
-# -----------------------------
-# Estas estructuras son el "recurso crítico"
-
-taxis: List[Dict[str, Any]] = []            # lista de taxis registrados
-clients: List[Dict[str, Any]] = []          # lista de clientes registrados
-trips: List[Dict[str, Any]] = []            # lista de viajes realizados
-pending_requests: List[Dict[str, Any]] = [] # cola de solicitudes pendientes
-
-# Lock para proteger el acceso concurrente a las estructuras anteriores
-state_lock = threading.Lock()
-
-# Semáforo que indica cuántas solicitudes hay en la cola
-sem_requests = threading.Semaphore(0)
-
-
-# -----------------------------
-# Modelos de entrada (Pydantic)
-# -----------------------------
-
-class StartRequest(BaseModel):
-    num_taxis: int
-
-
-class TaxiRequest(BaseModel):
-    name: str
-    origin_x: int
-    origin_y: int
-    dest_x: int
-    dest_y: int
-
-
-# -----------------------------
-# Funciones auxiliares
-# -----------------------------
-
-def distance(x1: float, y1: float, x2: float, y2: float) -> float:
-    """Distancia euclídea simple entre dos puntos (x1, y1) y (x2, y2)."""
-    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
-
-
-def reset_system(num_taxis: int) -> None:
-    """
-    Reinicia el estado del sistema:
-    - Borra taxis, clientes, viajes y solicitudes pendientes.
-    - Crea num_taxis taxis nuevos con posición aleatoria.
-    """
-    with state_lock:
-        taxis.clear()
-        clients.clear()
-        trips.clear()
-        pending_requests.clear()
-
-        # Creamos taxis con posición aleatoria en un mapa 0..10 x 0..10
-        for i in range(1, num_taxis + 1):
-            taxis.append({
-                "id": i,
-                "x": random.randint(0, 10),
-                "y": random.randint(0, 10),
-                "status": "free",        # "free" o "busy"
-                "total_earnings": 0.0,   # dinero acumulado para este taxi
-            })
-
-
-def choose_best_taxi(req: Dict[str, Any]):
-    """
-    Elige el taxi libre más cercano al punto de origen de la solicitud.
-    Si no hay taxis libres, devuelve None.
-    """
-    origin_x = req["origin_x"]
-    origin_y = req["origin_y"]
-
-    best_taxi = None
-    best_dist = None
-
-    for t in taxis:
-        if t["status"] != "free":
-            continue
-        d = distance(t["x"], t["y"], origin_x, origin_y)
-        if best_dist is None or d < best_dist:
-            best_dist = d
-            best_taxi = t
-
-    return best_taxi, best_dist
-
-
-def simulate_trip(taxi: Dict[str, Any], req: Dict[str, Any]) -> None:
-    """
-    Simula el viaje de un taxi para atender una solicitud:
-    - Se mueve desde su posición actual al origen del cliente.
-    - Luego del origen al destino.
-    - Calcula distancia total y tarifa.
-    """
-    # Copiamos datos de la solicitud
-    origin_x = req["origin_x"]
-    origin_y = req["origin_y"]
-    dest_x = req["dest_x"]
-    dest_y = req["dest_y"]
-
-    # Distancia desde el taxi al cliente
-    dist_to_client = distance(taxi["x"], taxi["y"], origin_x, origin_y)
-    # Distancia desde el cliente al destino
-    dist_trip = distance(origin_x, origin_y, dest_x, dest_y)
-    total_dist = dist_to_client + dist_trip
-
-    # Simulamos tiempo (muy pequeño para que la demo no tarde)
-    time.sleep(SLEEP_FACTOR * total_dist)
-
-    # Tarifa simple: por ejemplo, 2 € por unidad de distancia
-    fare = round(total_dist * 2.0, 2)
-
-    with state_lock:
-        # Actualizamos posición final y estado del taxi
-        taxi["x"] = dest_x
-        taxi["y"] = dest_y
-        taxi["status"] = "free"
-
-        # Parte para el taxi (80 %)
-        taxi_earn = fare * TAXI_PERCENT
-        taxi["total_earnings"] += taxi_earn
-
-        # Registramos el viaje
-        trip_id = len(trips) + 1
-        trips.append({
-            "id": trip_id,
-            "client_id": req["client_id"],
-            "taxi_id": taxi["id"],
-            "origin_x": origin_x,
-            "origin_y": origin_y,
-            "dest_x": dest_x,
-            "dest_y": dest_y,
-            "distance": total_dist,
-            "fare": fare,
-            "status": "finished",
-        })
-
-
-def worker_loop():
-    """
-    Hilo principal del Sistema de atención.
-
-    - Espera en el semáforo hasta que haya solicitudes.
-    - Extrae una solicitud de la cola (sección crítica con el lock).
-    - Elige el taxi libre más cercano.
-    - Simula el viaje.
-    """
-    while True:
-        # Esperamos a que haya al menos una solicitud en la cola
-        sem_requests.acquire()
-
-        # Tomamos una solicitud pendiente
-        with state_lock:
-            if not pending_requests:
-                # Puede pasar si hubo un reordenamiento raro; continuamos
-                continue
-
-            req = pending_requests.pop(0)
-
-            # Elegimos el mejor taxi libre
-            taxi, _ = choose_best_taxi(req)
-
-            if taxi is None:
-                # No hay taxis libres: reinsertamos la solicitud y continuamos
-                pending_requests.append(req)
-                # Pequeña espera para no hacer un bucle demasiado rápido
-                time.sleep(0.1)
-                # Volvemos a liberar el semáforo porque la solicitud sigue viva
-                sem_requests.release()
-                continue
-
-            # Marcamos el taxi como ocupado
-            taxi["status"] = "busy"
-
-        # Simulamos el viaje fuera de la sección crítica
-        simulate_trip(taxi, req)
-
-
-# Lanzamos el hilo del sistema de atención al arrancar el backend
-worker_thread = threading.Thread(target=worker_loop, daemon=True)
-worker_thread.start()
-
-
-# -----------------------------
-# Inicialización de FastAPI
-# -----------------------------
-
-app = FastAPI(title="UNIETAXI Backend")
+app = FastAPI()
 
 # Permitimos peticiones desde el frontend (Vite en localhost:5173)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # para el proyecto basta con permitir todo
+    allow_origins=["*"],  # para el proyecto de clase está bien así
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ==========
+#  MODELOS
+# ==========
 
-# -----------------------------
-# Endpoints
-# -----------------------------
+class Taxi(BaseModel):
+    id: int
+    x: int
+    y: int
+    free: bool = True
+    total_earned: float = 0.0  # cuánto ha ganado el taxi
 
-@app.post("/start")
+class Client(BaseModel):
+    id: int
+    name: str
+
+class Trip(BaseModel):
+    id: str
+    client_name: str
+    taxi_id: int
+    origin_x: int
+    origin_y: int
+    dest_x: int
+    dest_y: int
+    distance: float
+    fare: float
+    finished: bool = False
+
+class StatusResponse(BaseModel):
+    taxis: List[Taxi]
+    clients: List[Client]
+    trips: List[Trip]
+
+class StartRequest(BaseModel):
+    num_taxis: int
+
+class NewRequest(BaseModel):
+    client_name: str
+    origin_x: int
+    origin_y: int
+    dest_x: int
+    dest_y: int
+
+class FinancialSummary(BaseModel):
+    total_trips: int
+    total_fares: float
+    company_income: float
+    taxis_income: float
+    income_per_taxi: Dict[int, float]
+    sample_trips: List[Trip]
+
+# =========================
+#  ESTADO COMPARTIDO + "SEMÁFORO"
+# =========================
+
+# Este lock es nuestro "semáforo binario" para proteger la sección crítica
+lock = threading.Lock()
+
+taxis: List[Taxi] = []
+clients: List[Client] = []
+trips: List[Trip] = []
+
+PRICE_PER_KM = 1.5
+COMPANY_PERCENT = 0.20  # 20% para la empresa
+
+
+def calc_distance(o_x: int, o_y: int, d_x: int, d_y: int) -> float:
+    """Distancia euclídea entre origen y destino."""
+    return math.sqrt((d_x - o_x) ** 2 + (d_y - o_y) ** 2)
+
+
+def run_trip(trip_id: str) -> None:
+    """
+    Simula un viaje en un hilo aparte.
+    - Duerme unos segundos (viaje)
+    - Marca el viaje como terminado
+    - Libera el taxi y suma sus ingresos
+    """
+    global taxis, trips
+
+    # Simulamos que el viaje tarda 3 segundos
+    time.sleep(3)
+
+    with lock:  # sección crítica
+        trip = next((t for t in trips if t.id == trip_id), None)
+        if trip is None:
+            return
+
+        taxi = next((tx for tx in taxis if tx.id == trip.taxi_id), None)
+        if taxi is None:
+            return
+
+        # El taxi llega al destino del viaje
+        taxi.x = trip.dest_x
+        taxi.y = trip.dest_y
+        taxi.free = True
+
+        # El taxi se queda con el 80% del viaje
+        taxi.total_earned += trip.fare * (1 - COMPANY_PERCENT)
+
+        # Marcamos el viaje como finalizado
+        trip.finished = True
+
+
+# ======================
+#       ENDPOINTS
+# ======================
+
+@app.post("/start", response_model=StatusResponse)
 def start_system(body: StartRequest):
-    """
-    Inicia o reinicia el sistema con N taxis.
-    Esta operación:
-      - limpia taxis, clientes, viajes y cola de solicitudes
-      - crea num_taxis taxis nuevos
-    """
-    num = max(1, body.num_taxis)
-    reset_system(num)
-    return {
-        "message": "Sistema iniciado",
-        "num_taxis": num,
-    }
+    """Inicializa el sistema con N taxis y borra el estado anterior."""
+    global taxis, clients, trips
+
+    if body.num_taxis <= 0:
+        raise HTTPException(status_code=400, detail="num_taxis debe ser > 0")
+
+    with lock:  # protegemos la sección crítica
+        taxis = [Taxi(id=i + 1, x=0, y=0, free=True) for i in range(body.num_taxis)]
+        clients = []
+        trips = []
+
+        return StatusResponse(taxis=taxis, clients=clients, trips=trips)
 
 
-@app.post("/request")
-def create_request(body: TaxiRequest):
-    """
-    Un cliente realiza una nueva solicitud de taxi.
-    - Se registra el cliente (id, nombre).
-    - Se añade una solicitud a la cola pendiente.
-    - Se libera el semáforo para que el hilo de atención la procese.
-    """
-    with state_lock:
-        client_id = len(clients) + 1
-        clients.append({
-            "id": client_id,
-            "name": body.name,
-        })
-
-        req_id = len(pending_requests) + len(trips) + 1
-        request = {
-            "id": req_id,
-            "client_id": client_id,
-            "origin_x": body.origin_x,
-            "origin_y": body.origin_y,
-            "dest_x": body.dest_x,
-            "dest_y": body.dest_y,
-        }
-        pending_requests.append(request)
-
-        # Incrementamos el semáforo: hay una nueva solicitud para el hilo
-        sem_requests.release()
-
-    return {
-        "message": "Solicitud registrada",
-        "client_id": client_id,
-        "request_id": req_id,
-    }
-
-
-@app.get("/status")
+@app.get("/status", response_model=StatusResponse)
 def get_status():
+    """Devuelve el estado actual del sistema."""
+    with lock:
+        return StatusResponse(taxis=taxis, clients=clients, trips=trips)
+
+
+@app.post("/request", response_model=Trip)
+def new_request(body: NewRequest):
     """
-    Devuelve un resumen del estado del sistema:
-    - listas de taxis, clientes y viajes
-    - métricas agregadas para el dashboard
+    Crea una nueva solicitud de taxi:
+    - Busca el taxi libre más cercano
+    - Crea un viaje
+    - Lanza un hilo que simula el viaje
     """
-    with state_lock:
-        total_taxis = len(taxis)
-        total_clients = len(clients)
-        total_trips = len(trips)
-        free_taxis = sum(1 for t in taxis if t["status"] == "free")
-        busy_taxis = total_taxis - free_taxis
-        ongoing_trips = busy_taxis  # aproximación: 1 viaje por taxi ocupado
+    global taxis, clients, trips
 
-        return {
-            "taxis": taxis,
-            "clients": clients,
-            "trips": trips,
-            "metrics": {
-                "total_taxis": total_taxis,
-                "total_clients": total_clients,
-                "total_trips": total_trips,
-                "free_taxis": free_taxis,
-                "busy_taxis": busy_taxis,
-                "ongoing_trips": ongoing_trips,
-            },
-        }
+    with lock:
+        if not taxis:
+            raise HTTPException(
+                status_code=400,
+                detail="No hay taxis en el sistema. Inicia la simulación primero.",
+            )
+
+        # Elegimos solo taxis libres
+        libres = [tx for tx in taxis if tx.free]
+        if not libres:
+            raise HTTPException(
+                status_code=400,
+                detail="No hay taxis libres en este momento.",
+            )
+
+        # Elegimos el taxi libre más cercano al origen
+        distancias = [
+            (tx, calc_distance(body.origin_x, body.origin_y, tx.x, tx.y))
+            for tx in libres
+        ]
+        distancias.sort(key=lambda par: par[1])
+        chosen_taxi, dist = distancias[0]
+        chosen_taxi.free = False
+
+        # Buscamos o creamos el cliente
+        client = next((c for c in clients if c.name == body.client_name), None)
+        if client is None:
+            client = Client(id=len(clients) + 1, name=body.client_name)
+            clients.append(client)
+
+        # Calculamos la tarifa
+        fare = round(dist * PRICE_PER_KM, 2)
+
+        trip = Trip(
+            id=str(uuid.uuid4()),
+            client_name=client.name,
+            taxi_id=chosen_taxi.id,
+            origin_x=body.origin_x,
+            origin_y=body.origin_y,
+            dest_x=body.dest_x,
+            dest_y=body.dest_y,
+            distance=round(dist, 2),
+            fare=fare,
+            finished=False,
+        )
+        trips.append(trip)
+
+    # Lanzamos el hilo que simula el viaje fuera del lock
+    hilo = threading.Thread(target=run_trip, args=(trip.id,), daemon=True)
+    hilo.start()
+
+    return trip
 
 
-@app.get("/financial")
+@app.get("/financial", response_model=FinancialSummary)
 def get_financial():
     """
-    Cierre contable básico:
-    - total_fares: suma de todas las tarifas cobradas a los clientes
-    - total_trips: número total de viajes realizados
-    - company_total: 20% del total_fares (lo que gana la empresa)
-    - taxis_total: 80% del total_fares (lo que se reparten los taxis)
-    - per_taxi: lista con lo que gana cada taxi y la parte estimada de empresa
+    Calcula resumen económico:
+    - número de viajes
+    - suma total de tarifas
+    - ingreso empresa (20%)
+    - ingreso taxis (80%)
+    - ingresos por taxi
+    - 5 primeros viajes como muestra
     """
-    with state_lock:
-        total_fares = sum(t["fare"] for t in trips)
+    with lock:
+        total_fares = sum(t.fare for t in trips)
         total_trips = len(trips)
-        company_total = total_fares * COMPANY_PERCENT
-        taxis_total = total_fares * TAXI_PERCENT
 
-        per_taxi = []
-        for t in taxis:
-            taxi_earn = t["total_earnings"]
-            if taxi_earn > 0:
-                # parte de la empresa asociada a este taxi, proporcional
-                company_part = taxi_earn * COMPANY_PERCENT / TAXI_PERCENT
-            else:
-                company_part = 0.0
+        company_income = round(total_fares * COMPANY_PERCENT, 2)
+        taxis_income = round(total_fares * (1 - COMPANY_PERCENT), 2)
 
-            per_taxi.append({
-                "taxi_id": t["id"],
-                "taxi_earnings": taxi_earn,
-                "company_part": company_part,
-            })
-
-        return {
-            "total_fares": total_fares,
-            "total_trips": total_trips,
-            "company_total": company_total,
-            "taxis_total": taxis_total,
-            "per_taxi": per_taxi,
+        income_per_taxi: Dict[int, float] = {
+            tx.id: round(tx.total_earned, 2) for tx in taxis
         }
+
+        sample_trips = trips[:5]
+
+        return FinancialSummary(
+            total_trips=total_trips,
+            total_fares=round(total_fares, 2),
+            company_income=company_income,
+            taxis_income=taxis_income,
+            income_per_taxi=income_per_taxi,
+            sample_trips=sample_trips,
+        )
+

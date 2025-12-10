@@ -1,49 +1,50 @@
-// frontend/src/api/uniataxiApi.js
-import API_BASE_URL from "../config/apiConfig";
+const BASE_URL = "http://127.0.0.1:8000";
 
-// Función genérica para hacer peticiones al backend
-async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-
+async function handleResponse(res) {
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text}`);
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Error HTTP ${res.status}`);
   }
-
   return res.json();
 }
 
-// POST /start
-export function startSystem(numTaxis) {
-  return request("/start", {
-    method: "POST",
-    body: JSON.stringify({ num_taxis: numTaxis }),
-  });
+export async function getStatus() {
+  const res = await fetch(`${BASE_URL}/status`);
+  return handleResponse(res);
 }
 
-// POST /request
-export function requestTaxi({ name, originX, originY, destX, destY }) {
-  return request("/request", {
+export async function startSystem(numTaxis) {
+  const res = await fetch(`${BASE_URL}/start`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ num_taxis: numTaxis }),
+  });
+  return handleResponse(res);
+}
+
+export async function createRequest({
+  clientName,
+  originX,
+  originY,
+  destX,
+  destY,
+}) {
+  const res = await fetch(`${BASE_URL}/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      name,
+      client_name: clientName,
       origin_x: originX,
       origin_y: originY,
       dest_x: destX,
       dest_y: destY,
     }),
   });
+  return handleResponse(res);
 }
 
-// GET /status
-export function getStatus() {
-  return request("/status");
+export async function getFinancial() {
+  const res = await fetch(`${BASE_URL}/financial`);
+  return handleResponse(res);
 }
 
-// GET /financial
-export function getFinancial() {
-  return request("/financial");
-}

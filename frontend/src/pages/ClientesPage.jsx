@@ -1,50 +1,47 @@
 // frontend/src/pages/ClientesPage.jsx
 import { useSistema } from "../context/SistemaContext";
-import ClientsTable from "../components/tables/ClientsTable";
-import Loader from "../components/common/Loader";
-import Card from "../components/common/Card";
 
-function ClientesPage() {
-  const { systemData, loading, error, reload } = useSistema();
-  const clients = systemData?.clients || [];
+export default function ClientesPage() {
+  const { systemData, loading, error } = useSistema();
+
+  if (loading) return <p style={{ padding: "1rem" }}>Cargando clientes…</p>;
+  if (error) return <p style={{ padding: "1rem", color: "#f97373" }}>Error: {error}</p>;
+
+  const clientes = systemData?.clientes ?? [];
+
+  if (!clientes.length) {
+    return <p style={{ padding: "1rem" }}>No hay clientes registrados todavía.</p>;
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0, fontSize: "1.3rem" }}>Clientes</h2>
-        <button
-          onClick={reload}
-          style={{
-            padding: "0.4rem 0.8rem",
-            borderRadius: "0.4rem",
-            border: "none",
-            background: "#198754",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "0.85rem",
-          }}
-        >
-          Actualizar
-        </button>
-      </div>
-
-      {loading && (
-        <div style={{ fontSize: "0.85rem" }}>
-          <Loader /> Cargando clientes...
-        </div>
-      )}
-      {error && (
-        <div style={{ fontSize: "0.85rem", color: "#ff6b6b" }}>
-          Error: {error}
-        </div>
-      )}
-
-      <Card title="Lista de clientes">
-        <ClientsTable clients={clients} />
-      </Card>
+    <div style={{ padding: "0.5rem" }}>
+      <h2 style={{ marginBottom: "0.5rem" }}>Clientes en el sistema</h2>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "0.9rem",
+        }}
+      >
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Viajes realizados</th>
+          </tr>
+        </thead>
+        <tbody>
+          {clientes.map((c) => (
+            <tr key={c.id}>
+              <td>{c.id}</td>
+              <td>{c.nombre}</td>
+              <td>{c.viajes_realizados ?? 0}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-export default ClientesPage;
 
