@@ -1,83 +1,216 @@
 // frontend/src/pages/ClientesPage.jsx
-import { useSistema } from "../context/SistemaContext";
+import { useState } from "react";
+import { useSistema } from "../context/sistemaContext"; // 👈 IMPORT CORREGIDO
+import { rateTaxi } from "../api/uniataxiApi";
 
-export default function ClientesPage() {
-  const { systemData, loading, error } = useSistema();
+function ClientesPage() {
+  const { systemData, refreshStatus } = useSistema();
+  const [ratingPorCliente, setRatingPorCliente] = useState({});
+  const [mensaje, setMensaje] = useState("");
 
-  // 💡 OJO: el backend manda "clients", no "clientes"
-  const clients = systemData?.clients || [];
-  const trips = systemData?.trips || [];
-
-  if (loading && !systemData) {
-    return <p style={{ padding: "1rem" }}>Cargando clientes…</p>;
+  if (!systemData) {
+    return <p style={{ color: "white" }}>Cargando datos...</p>;
   }
 
-  if (error) {
-    return (
-      <p style={{ padding: "1rem", color: "#f97373" }}>
-        Error al cargar clientes: {error}
-      </p>
-    );
-  }
+  const clients = systemData.clients || [];
+  const trips = systemData.trips || [];
 
-  if (!clients.length) {
-    return (
-      <p style={{ padding: "1rem" }}>
-        No hay clientes registrados todavía. Crea una solicitud en el Dashboard.
-      </p>
-    );
-  }
+  // Obtener viajes de un cliente por nombre
+  const getViajesCliente = (nombre) =>
+    trips.filter((t) => t.client_name === nombre);
 
-  // calculamos cuántos viajes ha hecho cada cliente, usando trips
-  const viajesPorCliente = new Map();
-  trips.forEach((trip) => {
-    const name = trip.client_name || trip.cliente || "Desconocido";
-    viajesPorCliente.set(name, (viajesPorCliente.get(name) || 0) + 1);
-  });
+  const handleChangeRating = (clientId, value) => {
+    setRatingPorCliente((prev) => ({
+      ...prev,
+      [clientId]: value,
+    }));
+  };
+
+  const handleValorar = async (client) => {
+    setMensaje("");
+
+    const viajesCliente = getViajesCliente(client.name);
+    if (viajesCliente.length === 0) {
+      setMensaje(`El cliente ${client.name} aún no tiene viajes para valorar.`);
+      return;
+    }
+
+    // Usamos el ÚLTIMO viaje del cliente para valorar al taxi que le llevó
+    const ultimoViaje = viajesCliente[viajesCliente.length - 1];
+    const taxiId = ultimoViaje.taxi_id;
+
+    const ratingSeleccionado =
+      Number(ratingPorCliente[client.id]) || 5; // por defecto 5
+
+    try {
+      await rateTaxi(taxiId, ratingSeleccionado);
+      setMensaje(
+        `Has valorado al taxi ${taxiId} con ${ratingSeleccionado} estrellas.`
+      );
+      // refrescar datos del sistema para ver rating medio actualizado
+      await refreshStatus();
+    } catch (err) {
+      console.error(err);
+      setMensaje("Error al enviar la valoración.");
+    }
+  };
 
   return (
-    <div style={{ padding: "0.5rem" }}>
-      <h2 style={{ marginBottom: "0.75rem" }}>Clientes registrados</h2>
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: "0.9rem",
-        }}
-      >
-        <thead>
-          <tr>
-            <th style={thStyle}>ID</th>
-            <th style={thStyle}>Nombre</th>
-            <th style={thStyle}>Viajes realizados</th>
-          </tr>
-        </thead>
-        <tbody>
-          {clients.map((c) => (
-            <tr key={c.id}>
-              <td style={tdStyle}>{c.id}</td>
-              <td style={tdStyle}>{c.name}</td>
-              <td style={tdStyle}>
-                {viajesPorCliente.get(c.name) || 0}
-              </td>
+    <main style={{ padding: "1.5rem", color: "white" }}>
+      <h1>Clientes</h1>
+      <p style={{ marginBottom: "1rem" }}>
+        Aquí se muestran los clientes registrados y puedes valorar el taxi del
+        último viaje de cada uno (1 a 5 estrellas).
+      </p>
+
+      {mensaje && (
+        <div
+          style={{
+            marginBottom: "1rem",
+            padding: "0.5rem 1rem",
+            backgroundColor: "#1f2933",
+            borderRadius: "4px",
+          }}
+        >
+          {mensaje}
+        </div>
+      )}
+
+      {clients.length === 0 ? (
+        <p>No hay clientes registrados todavía.</p>
+      ) : (
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            backgroundColor: "#111827",
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={{ borderBottom: "1px solid #374151", padding: "8px" }}>
+                ID
+              </th>
+              <th style={{ borderBottom: "1px solid #374151", padding: "8px" }}>
+                Nombre
+              </th>
+              <th style={{ borderBottom: "1px solid #374151", padding: "8px" }}>
+                Nº viajes
+              </th>
+              <th style={{ borderBottom: "1px solid #374151", padding: "8px" }}>
+                Último taxi
+              </th>
+              <th style={{ borderBottom: "1px solid #374151", padding: "8px" }}>
+                Valorar taxi
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {clients.map((c) => {
+              const viajesCliente = getViajesCliente(c.name);
+              const numViajes = viajesCliente.length;
+              const ultimoViaje =
+                numViajes > 0 ? viajesCliente[numViajes - 1] : null;
+              const ultimoTaxiId = ultimoViaje ? ultimoViaje.taxi_id : "-";
+
+              return (
+                <tr key={c.id}>
+                  <td
+                    style={{
+                      borderBottom: "1px solid #374151",
+                      padding: "8px",
+                      textAlign: "center",
+                    }}
+                  >
+                    {c.id}
+                  </td>
+                  <td
+                    style={{
+                      borderBottom: "1px solid #374151",
+                      padding: "8px",
+                    }}
+                  >
+                    {c.name}
+                  </td>
+                  <td
+                    style={{
+                      borderBottom: "1px solid #374151",
+                      padding: "8px",
+                      textAlign: "center",
+                    }}
+                  >
+                    {numViajes}
+                  </td>
+                  <td
+                    style={{
+                      borderBottom: "1px solid #374151",
+                      padding: "8px",
+                      textAlign: "center",
+                    }}
+                  >
+                    {ultimoTaxiId}
+                  </td>
+                  <td
+                    style={{
+                      borderBottom: "1px solid #374151",
+                      padding: "8px",
+                      textAlign: "center",
+                    }}
+                  >
+                    {numViajes === 0 ? (
+                      <span style={{ fontSize: "0.85rem", opacity: 0.7 }}>
+                        Sin viajes aún
+                      </span>
+                    ) : (
+                      <>
+                        <select
+                          value={ratingPorCliente[c.id] || "5"}
+                          onChange={(e) =>
+                            handleChangeRating(c.id, e.target.value)
+                          }
+                          style={{
+                            marginRight: "0.5rem",
+                            padding: "0.2rem",
+                            backgroundColor: "#111827",
+                            color: "white",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          <option value="1">★☆☆☆☆ (1)</option>
+                          <option value="2">★★☆☆☆ (2)</option>
+                          <option value="3">★★★☆☆ (3)</option>
+                          <option value="4">★★★★☆ (4)</option>
+                          <option value="5">★★★★★ (5)</option>
+                        </select>
+                        <button
+                          onClick={() => handleValorar(c)}
+                          style={{
+                            padding: "0.2rem 0.6rem",
+                            backgroundColor: "#2563eb",
+                            color: "white",
+                            borderRadius: "4px",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Enviar
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </main>
   );
 }
 
-const thStyle = {
-  textAlign: "left",
-  padding: "0.4rem 0.6rem",
-  borderBottom: "1px solid rgba(55,65,81,0.7)",
-};
+export default ClientesPage;
 
-const tdStyle = {
-  padding: "0.35rem 0.6rem",
-  borderBottom: "1px solid rgba(31,41,55,0.7)",
-};
+
 
 
 

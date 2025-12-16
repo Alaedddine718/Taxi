@@ -1,5 +1,5 @@
 # backend/main.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
@@ -8,15 +8,18 @@ import time
 import math
 
 # ---------------------------------------------------
-# MODELOS DE DATOS (Pydantic)
+# MODELOS DE DATOS
 # ---------------------------------------------------
 
 class Taxi(BaseModel):
     id: int
     x: float
     y: float
-    free: bool = True          # True = taxi libre, False = ocupado
-    total_earned: float = 0.0  # dinero ganado por ese taxi
+    free: bool = True
+    total_earned: float = 0.0
+    rating: float = 0.0
+    rating_sum: int = 0
+    rating_count: int = 0
 
 
 class Client(BaseModel):
@@ -34,18 +37,14 @@ class Trip(BaseModel):
     dest_y: float
     distance: float
     fare: float
-    finished: bool = False     # True cuando el viaje termina
+    finished: bool = False
 
 
 class Match(BaseModel):
-    """
-    Para mostrar de forma clara cómo se hizo
-    la selección cliente–taxi.
-    """
     trip_id: int
     client_name: str
     taxi_id: int
-    distance: float            # distancia del taxi al cliente al asignar
+    distance: float
 
 
 class StartRequest(BaseModel):
@@ -60,14 +59,16 @@ class NewRequest(BaseModel):
     dest_y: float
 
 
+class RatingRequest(BaseModel):
+    taxi_id: int
+    rating: int
+
+
 class StatusResponse(BaseModel):
-    """
-    Estado completo del sistema que consume el frontend.
-    """
     taxis: List[Taxi]
     clients: List[Client]
     trips: List[Trip]
-    matches: List[Match]     # últimos emparejamientos taxi–cliente
+    matches: List[Match]
 
 
 class FinancialSummary(BaseModel):
@@ -80,19 +81,17 @@ class FinancialSummary(BaseModel):
 
 
 # ---------------------------------------------------
-# ESTADO GLOBAL + SINCRONIZACIÓN (SEMÁFOROS)
+# ESTADO GLOBAL + SEMÁFOROS
 # ---------------------------------------------------
 
-# Recursos críticos compartidos entre hilos
 taxis: List[Taxi] = []
 clients: List[Client] = []
 trips: List[Trip] = []
-matches_log: List[Match] = []   # para ver cómo se hizo la selección
+matches_log: List[Match] = []
 
-# 🔒 Semáforo binario / mutex: exclusión mutua de secciones críticas
+# 🔒 Mutex (sección crítica)
 lock = threading.Lock()
-
-# 🚦 Semáforo de conteo: número de taxis libres disponibles
+# 🚦 Semáforo de conteo: cuántos taxis libres hay
 free_taxis_sem = threading.Semaphore(0)
 
 
@@ -104,7 +103,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # frontend
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,20 +115,14 @@ app.add_middleware(
 # ---------------------------------------------------
 
 def distance(a_x: float, a_y: float, b_x: float, b_y: float) -> float:
-    """Distancia euclídea simple entre dos puntos."""
     return math.sqrt((a_x - b_x) ** 2 + (a_y - b_y) ** 2)
 
 
 def calculate_fare(dist: float) -> float:
-    """Tarifa sencilla: 5 fijo + 2 por unidad de distancia."""
     return round(5 + 2 * dist, 2)
 
 
 def find_or_create_client(name: str) -> Client:
-    """
-    Busca un cliente por nombre; si no existe, lo crea.
-    Recurso crítico: lista clients (se protege desde fuera con lock).
-    """
     global clients
     for c in clients:
         if c.name == name:
@@ -141,28 +134,27 @@ def find_or_create_client(name: str) -> Client:
 
 def assign_taxi_to_request(req: NewRequest) -> Trip:
     """
-    FUNCIÓN CLAVE (para la profe 👀):
-    - Usa semáforo de conteo free_taxis_sem para esperar taxis libres.
-    - Dentro del lock (semáforo binario) elige el taxi libre más cercano
-      al cliente y crea el viaje.
+    FUNCIÓN CLAVE DE SINCRONIZACIÓN:
+
+    - Usa free_taxis_sem (semaforo de conteo) para BLOQUEAR
+      la solicitud hasta que haya al menos un taxi libre.
+    - Como los taxis se liberan en run_trip después de 20 segundos,
+      si todos están ocupados la nueva petición ESPERA esos ~20 s.
     """
     global taxis, trips, matches_log, free_taxis_sem
 
-    # 1) Esperar a que haya al menos un taxi libre (semáforo de conteo)
-    acquired = free_taxis_sem.acquire(timeout=3)
-    if not acquired:
-        raise HTTPException(status_code=503, detail="No hay taxis libres en este momento")
+    # 👉 Aquí ya NO hay timeout: se queda esperando al taxi.
+    free_taxis_sem.acquire()
 
-    # 2) Sección crítica: acceso a taxis / clients / trips
     with lock:
-        # Lista de taxis libres en este momento
+        # lista de taxis libres en este momento
         free_taxis = [t for t in taxis if t.free]
         if not free_taxis:
-            # Caso raro: nadie libre → devolvemos el permiso al semáforo
+            # por seguridad, devolvemos el permiso
             free_taxis_sem.release()
             raise HTTPException(status_code=503, detail="No hay taxis libres en este momento")
 
-        # 3) Elegir el taxi LIBRE más CERCANO al cliente
+        # taxi libre más cercano al cliente
         best_taxi = None
         best_dist = None
         for t in free_taxis:
@@ -171,14 +163,14 @@ def assign_taxi_to_request(req: NewRequest) -> Trip:
                 best_dist = d
                 best_taxi = t
 
-        # 4) Crear o recuperar cliente
+        # cliente (se crea si no existía)
         client = find_or_create_client(req.client_name)
 
-        # 5) Calcular distancia del viaje y tarifa
+        # distancia viaje + tarifa
         dist = distance(req.origin_x, req.origin_y, req.dest_x, req.dest_y)
         fare = calculate_fare(dist)
 
-        # 6) Crear viaje y agregar a la lista
+        # crear viaje
         trip_id = len(trips) + 1
         trip = Trip(
             id=trip_id,
@@ -194,10 +186,10 @@ def assign_taxi_to_request(req: NewRequest) -> Trip:
         )
         trips.append(trip)
 
-        # 7) Marcar taxi como ocupado
+        # marcar taxi ocupado
         best_taxi.free = False
 
-        # 8) Registrar el emparejamiento para mostrarlo en el frontend
+        # guardar match
         match = Match(
             trip_id=trip.id,
             client_name=client.name,
@@ -205,11 +197,10 @@ def assign_taxi_to_request(req: NewRequest) -> Trip:
             distance=best_dist if best_dist is not None else 0.0,
         )
         matches_log.append(match)
-        # nos quedamos solo con los últimos 8 emparejamientos
         if len(matches_log) > 8:
             matches_log = matches_log[-8:]
 
-    # 9) Lanzar hilo independiente que simula el viaje
+    # lanzar hilo que simula el viaje
     thread = threading.Thread(target=run_trip, args=(trip.id,), daemon=True)
     thread.start()
 
@@ -219,17 +210,17 @@ def assign_taxi_to_request(req: NewRequest) -> Trip:
 def run_trip(trip_id: int):
     """
     Hilo que simula el viaje:
-    - Espera 20 segundos (simulación de tiempo real).
-    - Luego entra en una sección crítica para actualizar taxi y viaje.
-    - Libera un permiso en free_taxis_sem cuando el taxi vuelve a estar libre.
+    - Duerme 20 s (tiempo de viaje).
+    - Marca el viaje como terminado.
+    - Vuelve a poner el taxi como libre.
+    - Hace free_taxis_sem.release() para desbloquear la siguiente solicitud.
     """
     global taxis, trips, free_taxis_sem
 
-    # ⏱️ Simular tiempo de viaje: 20 segundos
+    # ⏱️ SIMULACIÓN DEL VIAJE: 20 segundos
     time.sleep(20)
 
     with lock:
-        # Buscar viaje y taxi asociados
         trip = next((v for v in trips if v.id == trip_id), None)
         if trip is None:
             return
@@ -238,28 +229,17 @@ def run_trip(trip_id: int):
         if taxi is None:
             return
 
-        # Actualizar posición del taxi al destino
         taxi.x = trip.dest_x
         taxi.y = trip.dest_y
-
-        # Actualizar ingresos del taxi (80 % de la tarifa)
         taxi.total_earned += trip.fare * 0.8
-
-        # Marcar taxi libre de nuevo
         taxi.free = True
-
-        # Marcar viaje como finalizado
         trip.finished = True
 
-        # Liberar un permiso en el semáforo de taxis libres
+        # 👉 Aquí liberamos un taxi libre más
         free_taxis_sem.release()
 
 
 def build_status() -> StatusResponse:
-    """
-    Devuelve un “snapshot” coherente del sistema
-    (se protege con lock para que no se lea a mitad de una actualización).
-    """
     with lock:
         return StatusResponse(
             taxis=list(taxis),
@@ -270,16 +250,14 @@ def build_status() -> StatusResponse:
 
 
 # ---------------------------------------------------
-# ENDPOINTS DE LA API (usados por React)
+# ENDPOINTS
 # ---------------------------------------------------
 
 @app.post("/start", response_model=StatusResponse)
 def start_system(req: StartRequest):
     """
-    Reinicia el sistema UNIETAXI con N taxis.
-    - Limpia todas las listas.
-    - Reinicia el semáforo de taxis libres.
-    - Crea N taxis libres y hace release() por cada uno.
+    Reinicia el sistema con N taxis.
+    Inicializa el semáforo con N permisos (N taxis libres).
     """
     global taxis, clients, trips, matches_log, free_taxis_sem
 
@@ -292,20 +270,20 @@ def start_system(req: StartRequest):
         trips = []
         matches_log = []
 
-        # Reiniciar semáforo de taxis libres (valor inicial 0)
         free_taxis_sem = threading.Semaphore(0)
 
-        # Crear N taxis
         for i in range(1, req.num_taxis + 1):
             t = Taxi(
                 id=i,
-                x=float(i),   # posiciones simples
+                x=float(i),
                 y=0.0,
                 free=True,
                 total_earned=0.0,
+                rating=0.0,
+                rating_sum=0,
+                rating_count=0,
             )
             taxis.append(t)
-            # Cada taxi libre incrementa el semáforo de conteo
             free_taxis_sem.release()
 
     return build_status()
@@ -313,33 +291,66 @@ def start_system(req: StartRequest):
 
 @app.get("/status", response_model=StatusResponse)
 def get_status():
-    """Devuelve el estado actual: taxis, clientes, viajes y últimos matches."""
     return build_status()
 
 
 @app.post("/request")
-def create_request(req: NewRequest):
+def create_request(payload: dict = Body(...)):
     """
-    Recibe una solicitud de taxi:
-    - Espera taxi libre (free_taxis_sem.acquire()).
-    - Dentro del lock selecciona el taxi libre más cercano.
-    - Crea cliente (si no existe) y viaje.
-    - Lanza hilo del viaje.
+    Recibe una solicitud de taxi.
+    Acepta camelCase o snake_case y nunca peta por tipos:
+    si algo viene vacío lo convierte a 0.0.
     """
+    def safe_float(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    client_name = (
+        payload.get("client_name")
+        or payload.get("clientName")
+        or "Cliente_sin_nombre"
+    )
+
+    origin_x = safe_float(payload.get("origin_x") or payload.get("originX"), 0.0)
+    origin_y = safe_float(payload.get("origin_y") or payload.get("originY"), 0.0)
+    dest_x = safe_float(payload.get("dest_x") or payload.get("destX"), 0.0)
+    dest_y = safe_float(payload.get("dest_y") or payload.get("destY"), 0.0)
+
+    req = NewRequest(
+        client_name=str(client_name),
+        origin_x=origin_x,
+        origin_y=origin_y,
+        dest_x=dest_x,
+        dest_y=dest_y,
+    )
+
     trip = assign_taxi_to_request(req)
     return {"status": "ok", "trip_id": trip.id}
 
 
+@app.post("/rate")
+def rate_taxi(req: RatingRequest):
+    global taxis
+
+    if req.rating < 1 or req.rating > 5:
+        raise HTTPException(status_code=400, detail="La valoración debe estar entre 1 y 5")
+
+    with lock:
+        taxi = next((t for t in taxis if t.id == req.taxi_id), None)
+        if taxi is None:
+            raise HTTPException(status_code=404, detail="Taxi no encontrado")
+
+        taxi.rating_sum += req.rating
+        taxi.rating_count += 1
+        taxi.rating = round(taxi.rating_sum / taxi.rating_count, 2)
+
+    return {"status": "ok", "taxi_id": taxi.id, "rating": taxi.rating}
+
+
 @app.get("/financial", response_model=FinancialSummary)
 def get_financial():
-    """
-    Calcula resumen financiero:
-    - número total de viajes
-    - suma de tarifas
-    - 20 % empresa, 80 % taxis
-    - detalle por taxi
-    - últimos viajes para seguimiento
-    """
     with lock:
         total_fares = sum(t.fare for t in trips)
         company_income = round(total_fares * 0.2, 2)
@@ -351,10 +362,10 @@ def get_financial():
                 {
                     "taxi_id": t.id,
                     "earned": round(t.total_earned, 2),
+                    "rating": round(t.rating, 2) if t.rating_count > 0 else None,
                 }
             )
 
-        # Seguimiento hasta de 5 viajes
         tracked = trips[-5:] if len(trips) > 5 else list(trips)
 
     return FinancialSummary(
@@ -365,6 +376,10 @@ def get_financial():
         per_taxi=per_taxi,
         tracked_trips=tracked,
     )
+
+
+
+
 
 
 
